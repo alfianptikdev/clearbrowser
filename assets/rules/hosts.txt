@@ -1,0 +1,3 @@
+# Clear Browser — daftar host iklan
+# Format: satu host per baris, komentar diawali '#'. Lihat docs/RULES-FORMAT.md.
+# Diisi pada M2 (Peter Lowe's list + tambahan manual).
