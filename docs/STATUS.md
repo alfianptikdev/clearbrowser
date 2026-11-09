@@ -8,7 +8,7 @@ Terakhir diperbarui: 2026-11-09 · Sesi: 1 (M1)
 
 | # | Milestone | Status | Sesi | Commit | Catatan |
 |---|---|---|---|---|---|
-| M1 | Browser shell + WebView tuning | `DONE` | 1 | `2f5c6d2` | Fullscreen video belum diuji di device fisik |
+| M1 | Browser shell + WebView tuning | `DONE` | 1 | `6ebcc02` | Fullscreen video belum diuji di device fisik |
 | M2 | Adblock jaringan + navigasi + popup + log | `TODO` | — | — | Siap dikerjakan |
 | M3 | Cosmetic engine + site profile | `TODO` | — | — | Butuh M2 |
 | M4 | Rule pack remote + settings + history/tab | `TODO` | — | — | Butuh M3 |
@@ -41,7 +41,7 @@ Format: `Sesi N — Mx — hasil — commit — catatan`
 | Sesi | Milestone | Hasil | Commit | Catatan |
 |---|---|---|---|---|
 | 0 | docs | PRD, arsitektur, 5 milestone, AGENTS.md dibuat | — | Belum ada kode |
-| 1 | M1 | Shell browser jalan: WebView, address bar, progress, error view, normalisasi URL, fullscreen hook, 11 test | `2f5c6d2` | Kode callback masih di `browser_page.dart` (belum `browser_controller.dart`) |
+| 1 | M1 | Shell browser jalan: WebView, address bar, progress, error view, normalisasi URL, fullscreen hook, 11 test | `6ebcc02` | Kode callback masih di `browser_page.dart` (belum `browser_controller.dart`) |
 
 ## 5. Masalah yang diketahui
 
@@ -59,4 +59,4 @@ Format: `Sesi N — Mx — hasil — commit — catatan`
 - Verifikasi: `flutter analyze` 0 issue · `flutter test` 11 lulus · `flutter build apk --debug` & `--release` sukses · emulator Pixel 6 API 35: home DuckDuckGo, navigasi `example.com`, back, rotasi tanpa reload, progress bar, video HTML5 diputar.
 - Belum teruji: fullscreen video (emulator), autoplay tanpa gesture, dan semua uji di perangkat fisik.
 - Catatan untuk sesi berikut: `browser_controller.dart` belum ada — callback WebView masih langsung di `browser_page.dart`. Saat M2 menambah guard, tambahkan hook seminimal mungkin di file itu dan catat di handoff; jangan refactor besar di tengah M2.
-- Commit: `2f5c6d2` feat(M1): browser shell, WebView tuning, address bar, url normalizer
+- Commit: `6ebcc02` feat(M1): browser shell, WebView tuning, address bar, url normalizer
