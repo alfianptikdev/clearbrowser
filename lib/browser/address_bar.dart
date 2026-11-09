@@ -11,6 +11,7 @@ class AddressBar extends StatelessWidget {
     required this.onForward,
     required this.onReload,
     required this.onStop,
+    this.onMenu,
     this.canGoBack = false,
     this.canGoForward = false,
     this.isLoading = false,
@@ -25,6 +26,10 @@ class AddressBar extends StatelessWidget {
   final VoidCallback onForward;
   final VoidCallback onReload;
   final VoidCallback onStop;
+
+  /// Dibuka lewat ikon perisai; sementara berisi log blokir (M2), nanti
+  /// pindah ke Settings di M4.
+  final VoidCallback? onMenu;
 
   final bool canGoBack;
   final bool canGoForward;
@@ -128,6 +133,12 @@ class AddressBar extends StatelessWidget {
                     icon: isLoading ? Icons.close : Icons.refresh,
                     tooltip: isLoading ? 'Berhenti' : 'Muat ulang',
                     onPressed: isLoading ? onStop : onReload,
+                  ),
+                  _NavButton(
+                    key: const Key('btn-block-log'),
+                    icon: Icons.shield_outlined,
+                    tooltip: 'Log blokir',
+                    onPressed: onMenu,
                   ),
                 ],
               ),

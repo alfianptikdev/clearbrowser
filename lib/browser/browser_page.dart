@@ -2,9 +2,15 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 
+import '../adblock/block_log.dart';
+import '../adblock/navigation_guard.dart';
+import '../adblock/popup_guard.dart';
+import '../adblock/request_guard.dart';
+import '../adblock/rule_engine.dart';
 import '../core/constants.dart';
 import '../core/logger.dart';
 import '../core/url_utils.dart';
+import '../ui/block_log_sheet.dart';
 import 'address_bar.dart';
 import 'webview_setup.dart';
 
@@ -30,6 +36,20 @@ class _BrowserPageState extends State<BrowserPage> {
 
   InAppWebViewController? _webView;
 
+  // Adblock layer (M2). Semua keputusan lewat guard; page hanya memetakan
+  // hasilnya ke callback WebView.
+  final RuleEngine _ruleEngine = RuleEngine();
+  final BlockLog _blockLog = BlockLog();
+  late final RequestGuard _requestGuard = RequestGuard(
+    engine: _ruleEngine,
+    log: _blockLog,
+  );
+  late final NavigationGuard _navigationGuard = NavigationGuard(
+    engine: _ruleEngine,
+    log: _blockLog,
+  );
+  late final PopupGuard _popupGuard = PopupGuard(log: _blockLog);
+
   String _currentUrl = kHomeUrl;
   double _progress = 0;
   bool _isLoading = true;
@@ -37,6 +57,24 @@ class _BrowserPageState extends State<BrowserPage> {
   bool _canGoForward = false;
   bool _isFullscreen = false;
   _PageError? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _initAdblock();
+  }
+
+  /// Dimuat setelah frame pertama agar startup tidak menunggu I/O.
+  /// Gagal memuat = adblock kosong, bukan crash (fail-open).
+  Future<void> _initAdblock() async {
+    await _ruleEngine.loadFromAssets();
+    await _ruleEngine.loadAllowlist();
+    Log.d(
+      'adblock',
+      'siap: ${_ruleEngine.hostCount} host, '
+          '${_ruleEngine.allowlist.length} allowlist',
+    );
+  }
 
   @override
   void dispose() {
@@ -109,6 +147,10 @@ class _BrowserPageState extends State<BrowserPage> {
     } else {
       await SystemNavigator.pop();
     }
+  }
+
+  Future<void> _openBlockLog() async {
+    await showBlockLogSheet(context, log: _blockLog, engine: _ruleEngine);
   }
 
   // ---------------------------------------------------------------------------
@@ -210,6 +252,7 @@ class _BrowserPageState extends State<BrowserPage> {
                 onForward: () => _webView?.goForward(),
                 onReload: () => _webView?.reload(),
                 onStop: () => _webView?.stopLoading(),
+                onMenu: _openBlockLog,
                 canGoBack: _canGoBack,
                 canGoForward: _canGoForward,
                 isLoading: _isLoading,
@@ -233,6 +276,28 @@ class _BrowserPageState extends State<BrowserPage> {
                     onReceivedError: _onReceivedError,
                     onEnterFullscreen: _onEnterFullscreen,
                     onExitFullscreen: _onExitFullscreen,
+                    // --- Adblock (M2) ---
+                    shouldOverrideUrlLoading: (controller, action) async {
+                      final url = action.request.url?.toString() ?? '';
+                      final decision = _navigationGuard.evaluate(
+                        url,
+                        isForMainFrame: action.isForMainFrame,
+                      );
+                      _navigationGuard.record(decision, url);
+                      return decision.blocked
+                          ? NavigationActionPolicy.CANCEL
+                          : NavigationActionPolicy.ALLOW;
+                    },
+                    shouldInterceptRequest: (controller, request) async =>
+                        _requestGuard.intercept(request),
+                    onCreateWindow: (controller, action) async {
+                      final target = action.request.url?.toString();
+                      Log.d('popup', 'ditolak: $target');
+                      return _popupGuard.handle(
+                        targetUrl: target,
+                        currentUrl: _currentUrl,
+                      );
+                    },
                     onConsoleMessage: (controller, message) {
                       Log.d(
                         'console',
