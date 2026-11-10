@@ -18,7 +18,7 @@ Legenda: `TODO` · `IN_PROGRESS` · `BLOCKED` · `DONE`
 
 ## 2. Sesi berikutnya
 
-M1–M4 `DONE`. Sisa: uji Update dengan perubahan isi nyata + mode pesawat (opsional), atau mulai M5 (opsional, hanya jika terbukti perlu).
+M1–M4 `DONE`. Rule pack remote terbukti penuh di device. Sisa hanya M5 (opsional, hanya jika terbukti perlu).
 
 ## 3. Keputusan yang sudah final
 
@@ -65,7 +65,7 @@ Format: `Sesi N — Mx — hasil — commit — catatan`
 | 7 | Host terpelajari/situs ditandai belum bisa dilihat/dihapus | Terbuka | Allowlist menang atas host terpelajari; layar kelola di M4 |
 | 8 | Link sah yang diketuk di halaman terkunci ikut dipelajari sebagai iklan | Terbuka | Allowlist pengguna |
 | 9 | `RuleEngine.siteOf` heuristik panjang label, bukan public-suffix-list | Diketahui | Cukup untuk TLD `.co.id`-style |
-| 10 | URL rule pack kosong → tombol Update tersembunyi | Selesai | URL diisi ke repo `alfianptikdev/clearbrowser`; tombol Update muncul dan berhasil di device (SM A525F). Belum diuji: update dengan perubahan isi nyata dan mode pesawat |
+| 10 | URL rule pack kosong → tombol Update tersembunyi | Selesai | URL diisi ke repo `alfianptikdev/clearbrowser`; tombol Update muncul dan berhasil di device (SM A525F). Update dengan perubahan isi nyata (host +1, sites v5) dan mode pesawat diuji berhasil oleh pemilik (sesi 5) |
 | 11 | Persist daftar tab (opsional M4) dan ETag update belum dibuat | Ditunda | `// shortcut:` di `rule_pack_loader.dart`; tab hilang saat app ditutup |
 
 ## 6. Catatan handoff terakhir
