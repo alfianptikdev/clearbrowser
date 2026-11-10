@@ -58,6 +58,7 @@ class RuleEngine {
 
   /// Situs iklan yang dipelajari otomatis dari halaman video (persisten).
   final Set<String> _learned = <String>{};
+  final Set<String> _custom = <String>{};
   static const int maxLearned = 1000;
   final List<({String source, RegExp regex})> _urlPatterns = [];
 
@@ -68,6 +69,9 @@ class RuleEngine {
   Set<String> get allowlist => Set<String>.unmodifiable(_allowlist);
 
   Set<String> get learned => Set<String>.unmodifiable(_learned);
+
+  /// Host yang diblokir manual oleh pengguna (dari Pengaturan).
+  Set<String> get customBlocked => Set<String>.unmodifiable(_custom);
 
   Set<String> get topLevelBlocked => Set<String>.unmodifiable(_topLevelBlocked);
 
@@ -204,6 +208,55 @@ class RuleEngine {
   }
 
   // ---------------------------------------------------------------------------
+  // Blokir manual pengguna
+  // ---------------------------------------------------------------------------
+
+  Future<void> loadCustom() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      _custom
+        ..clear()
+        ..addAll(
+          (prefs.getStringList(StorageKeys.customBlocked) ?? const [])
+              .map(normalizeHost)
+              .where((h) => h.isNotEmpty),
+        );
+    } catch (error) {
+      Log.e('rules', 'gagal memuat blokir manual, fail-open', error);
+    }
+  }
+
+  /// Tambah host/URL ke blokir manual (subdomain ikut terblokir). Mengembalikan
+  /// host yang disimpan, atau `null` bila input tidak valid.
+  Future<String?> addCustom(String raw) async {
+    var input = raw.trim();
+    if (input.isEmpty) return null;
+    if (!input.contains('://')) input = 'https://$input';
+    final host = normalizeHost(input);
+    if (host.isEmpty || !host.contains('.') || host.contains(' ')) return null;
+    _custom.add(host.startsWith('www.') ? host.substring(4) : host);
+    await _persistCustom();
+    return host.startsWith('www.') ? host.substring(4) : host;
+  }
+
+  Future<void> removeCustom(String host) async {
+    _custom.remove(host);
+    await _persistCustom();
+  }
+
+  Future<void> _persistCustom() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setStringList(
+        StorageKeys.customBlocked,
+        _custom.toList()..sort(),
+      );
+    } catch (error) {
+      Log.e('rules', 'gagal menyimpan blokir manual', error);
+    }
+  }
+
+  // ---------------------------------------------------------------------------
   // Allowlist pengguna
   // ---------------------------------------------------------------------------
 
@@ -253,7 +306,9 @@ class RuleEngine {
   /// Host yang cocok dengan blocklist, atau `null`.
   String? matchBlockedHost(String rawHost) {
     final host = normalizeHost(rawHost);
-    return _matchDomain(_hosts, host) ?? _matchDomain(_learned, host);
+    return _matchDomain(_hosts, host) ??
+        _matchDomain(_learned, host) ??
+        _matchDomain(_custom, host);
   }
 
   bool isAllowlisted(String rawHost) =>
@@ -262,7 +317,8 @@ class RuleEngine {
   bool isTopLevelBlocked(String rawHost) {
     final host = normalizeHost(rawHost);
     return _matchDomain(_topLevelBlocked, host) != null ||
-        _matchDomain(_learned, host) != null;
+        _matchDomain(_learned, host) != null ||
+        _matchDomain(_custom, host) != null;
   }
 
   /// Suffix per label, maksimum [maxLabelLookups] iterasi.

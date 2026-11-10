@@ -101,6 +101,7 @@ class _BrowserPageState extends State<BrowserPage> {
   Future<void> _initAdblock() async {
     await _ruleEngine.loadAllowlist();
     await _ruleEngine.loadLearned();
+    await _ruleEngine.loadCustom();
     await _settings.load();
     _applyHomeUrl();
     await _history.load();
@@ -149,6 +150,66 @@ class _BrowserPageState extends State<BrowserPage> {
     forMainFrameOnly: false,
   );
 
+  /// Klik `<a href>` di fase capture → kirim ke Dart (handler `cbOpenLink`)
+  /// dan batalkan navigasi bawaan. Aktif hanya bila `__cbNewTab` true.
+  static const String _linkJs = r'''
+(function () {
+  if (window.__cbLinkHook) return;
+  window.__cbLinkHook = true;
+  window.addEventListener('click', function (e) {
+    if (!window.__cbNewTab || e.defaultPrevented || e.button !== 0) return;
+    var el = e.target;
+    var a = el && el.closest ? el.closest('a[href]') : null;
+    if (!a) return;
+    var href = a.href;
+    if (!/^https?:/i.test(href)) return;
+    if (a.hasAttribute('download')) return;
+    var cur = location.href.split('#')[0];
+    if (href.split('#')[0] === cur && href.indexOf('#') >= 0) return;
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    window.flutter_inappwebview.callHandler('cbOpenLink', href);
+  }, true);
+})();
+''';
+
+  List<UserScript> _initialScripts() => [
+    _cosmeticUserScript(_cosmeticJs!),
+    UserScript(
+      source:
+          'window.__cbNewTab = ${_settings.linksInNewTab};\n$_linkJs',
+      injectionTime: UserScriptInjectionTime.AT_DOCUMENT_START,
+      forMainFrameOnly: true,
+    ),
+  ];
+
+  /// Terapkan perubahan toggle link-tab-baru tanpa memuat ulang halaman.
+  Future<void> _syncLinkSetting() async {
+    final on = _settings.linksInNewTab;
+    for (final tab in _tabs.tabs) {
+      final c = tab.controller;
+      if (c == null) continue;
+      await c.removeAllUserScripts();
+      for (final s in _initialScripts()) {
+        await c.addUserScript(userScript: s);
+      }
+      await c.evaluateJavascript(source: 'window.__cbNewTab = $on;');
+    }
+  }
+
+  void _onLinkClicked(BrowserTab tab, String url) {
+    final decision = _navigationGuard.evaluate(
+      url,
+      isForMainFrame: true,
+      sourceUrl: tab.url,
+    );
+    if (decision.blocked) {
+      _navigationGuard.record(decision, url);
+      return;
+    }
+    _openInNewTab(url);
+  }
+
   /// Gabungkan profil `sites.json` + override + situs yang ditandai, lalu
   /// bangun ulang skrip kosmetik dan kunci navigasi. Toggle global off →
   /// semua guard dan skrip nonaktif.
@@ -173,15 +234,31 @@ class _BrowserPageState extends State<BrowserPage> {
     if (js == null) return;
     for (final tab in _tabs.tabs) {
       await tab.controller?.removeAllUserScripts();
-      await tab.controller?.addUserScript(userScript: _cosmeticUserScript(js));
+      if (tab.controller == null) continue;
+      for (final s in _initialScripts()) {
+        await tab.controller!.addUserScript(userScript: s);
+      }
     }
     await _tab.controller?.reload();
   }
 
+  bool _lastAdblockEnabled = true;
+
   void _onSettingsChanged() {
+    // Toggle "link di tab baru" tidak perlu memuat ulang halaman.
+    if (_settings.adblockEnabled == _lastAdblockEnabled &&
+        _settings.linksInNewTab != _lastLinksInNewTab) {
+      _lastLinksInNewTab = _settings.linksInNewTab;
+      unawaited(_syncLinkSetting());
+      return;
+    }
+    _lastLinksInNewTab = _settings.linksInNewTab;
+    _lastAdblockEnabled = _settings.adblockEnabled;
     _applyProfiles();
     unawaited(_refreshScripts());
   }
+
+  bool _lastLinksInNewTab = false;
 
   Future<void> _togglePin() async {
     final host = hostOf(_currentUrl);
@@ -757,12 +834,6 @@ class _BrowserPageState extends State<BrowserPage> {
                 isSecure: isSecureUrl(_currentUrl),
                 progress: _tab.progress,
               ),
-              TabStrip(
-                manager: _tabs,
-                onSelect: _selectTab,
-                onClose: _closeTab,
-                onNew: _newTab,
-              ),
             ],
             Expanded(
               child: Stack(
@@ -775,6 +846,16 @@ class _BrowserPageState extends State<BrowserPage> {
                 ],
               ),
             ),
+            if (!_isFullscreen)
+              SafeArea(
+                top: false,
+                child: TabStrip(
+                  manager: _tabs,
+                  onSelect: _selectTab,
+                  onClose: _closeTab,
+                  onNew: _newTab,
+                ),
+              ),
           ],
         ),
       ),
@@ -787,12 +868,20 @@ class _BrowserPageState extends State<BrowserPage> {
       children: [
         InAppWebView(
           initialSettings: buildWebViewSettings(),
-          initialUserScripts: UnmodifiableListView([
-            _cosmeticUserScript(_cosmeticJs!),
-          ]),
+          initialUserScripts: UnmodifiableListView(_initialScripts()),
           initialUrlRequest: URLRequest(url: WebUri(tab.url)),
           onWebViewCreated: (controller) {
             tab.controller = controller;
+            controller.addJavaScriptHandler(
+              handlerName: 'cbOpenLink',
+              callback: (args) {
+                final url = args.isNotEmpty ? args.first?.toString() : null;
+                if (url != null && _settings.linksInNewTab) {
+                  _onLinkClicked(tab, url);
+                }
+                return null;
+              },
+            );
             _syncNavState(tab);
           },
           onLoadStart: (c, u) => _onLoadStart(tab, c, u),
@@ -817,10 +906,21 @@ class _BrowserPageState extends State<BrowserPage> {
             if (decision.blocked) {
               if (decision.reason == 'pinned') _learn(tab, url);
               Log.d('nav', 'diblokir nav: $url (${decision.reason})');
+              return NavigationActionPolicy.CANCEL;
             }
-            return decision.blocked
-                ? NavigationActionPolicy.CANCEL
-                : NavigationActionPolicy.ALLOW;
+            // Klik link oleh pengguna (bukan redirect/muat awal) → tab baru.
+            if (_settings.linksInNewTab &&
+                action.isForMainFrame &&
+                action.hasGesture == true &&
+                action.isRedirect != true &&
+                url != tab.url) {
+              final scheme = Uri.tryParse(url)?.scheme.toLowerCase();
+              if (scheme == 'http' || scheme == 'https') {
+                _openInNewTab(url);
+                return NavigationActionPolicy.CANCEL;
+              }
+            }
+            return NavigationActionPolicy.ALLOW;
           },
           shouldInterceptRequest: (controller, request) async =>
               _requestGuard.intercept(request),

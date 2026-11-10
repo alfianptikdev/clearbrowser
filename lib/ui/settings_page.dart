@@ -108,6 +108,47 @@ class _SettingsPageState extends State<SettingsPage> {
     );
   }
 
+  Future<void> _addCustomBlock() async {
+    final controller = TextEditingController();
+    final result = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Blokir situs'),
+        content: TextField(
+          key: const Key('field-custom-block'),
+          controller: controller,
+          autofocus: true,
+          keyboardType: TextInputType.url,
+          decoration: const InputDecoration(
+            hintText: 'contoh: ads.example.com',
+            helperText: 'Subdomain ikut terblokir',
+          ),
+          onSubmitted: (v) => Navigator.pop(ctx, v),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Batal'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, controller.text),
+            child: const Text('Blokir'),
+          ),
+        ],
+      ),
+    );
+    if (result == null) return;
+    final host = await widget.engine.addCustom(result);
+    if (!mounted) return;
+    setState(() {});
+    final msg = host == null
+        ? 'Alamat tidak valid'
+        : widget.engine.isAllowlisted(host)
+        ? '$host ditambahkan, tapi masih ada di allowlist (allowlist menang)'
+        : '$host diblokir';
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+  }
+
   Future<void> _confirmClearHistory() async {
     final ok = await showDialog<bool>(
       context: context,
@@ -165,6 +206,14 @@ class _SettingsPageState extends State<SettingsPage> {
               ),
               const Divider(),
               _header('Umum'),
+              SwitchListTile(
+                key: const Key('switch-links-new-tab'),
+                secondary: const Icon(Icons.open_in_new),
+                title: const Text('Buka link di tab baru'),
+                subtitle: const Text('Klik link langsung membuka tab baru'),
+                value: s.linksInNewTab,
+                onChanged: s.setLinksInNewTab,
+              ),
               ListTile(
                 key: const Key('btn-home-url'),
                 leading: const Icon(Icons.home_outlined),
@@ -235,6 +284,27 @@ class _SettingsPageState extends State<SettingsPage> {
                     tooltip: 'Hapus dari allowlist',
                     onPressed: () async {
                       await widget.engine.removeFromAllowlist(h);
+                      if (mounted) setState(() {});
+                    },
+                  ),
+                ),
+              const Divider(),
+              _header('Blokir manual'),
+              ListTile(
+                key: const Key('btn-add-custom-block'),
+                leading: const Icon(Icons.add),
+                title: const Text('Tambah situs/URL untuk diblokir'),
+                onTap: _addCustomBlock,
+              ),
+              if (widget.engine.customBlocked.isEmpty) _empty('Belum ada'),
+              for (final h in widget.engine.customBlocked.toList()..sort())
+                ListTile(
+                  title: Text(h),
+                  trailing: IconButton(
+                    icon: const Icon(Icons.delete_outline),
+                    tooltip: 'Hapus blokir',
+                    onPressed: () async {
+                      await widget.engine.removeCustom(h);
                       if (mounted) setState(() {});
                     },
                   ),

@@ -21,6 +21,8 @@ class StorageKeys {
   static const String pinnedSites = 'settings.pinnedSites';
   static const String siteOverrides = 'settings.siteOverrides';
   static const String homeUrl = 'settings.homeUrl';
+  static const String customBlocked = 'settings.customBlocked';
+  static const String linksInNewTab = 'settings.linksInNewTab';
   static const String rulesHosts = 'rules.hosts';
   static const String rulesSites = 'rules.sites';
   static const String rulesVersion = 'rules.version';

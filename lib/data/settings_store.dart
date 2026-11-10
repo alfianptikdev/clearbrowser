@@ -11,11 +11,15 @@ import '../core/logger.dart';
 /// menerapkannya ke guard dan skrip kosmetik.
 class SettingsStore extends ChangeNotifier {
   bool _adblockEnabled = true;
+  bool _linksInNewTab = false;
   String _homeUrl = kHomeUrl;
   final Map<String, bool> _siteOverrides = {};
   final Set<String> _userSites = {};
 
   bool get adblockEnabled => _adblockEnabled;
+
+  /// Klik link di halaman langsung dibuka di tab baru (default mati).
+  bool get linksInNewTab => _linksInNewTab;
 
   /// Halaman awal (tab pertama, tab baru, tombol beranda).
   String get homeUrl => _homeUrl;
@@ -26,6 +30,7 @@ class SettingsStore extends ChangeNotifier {
     try {
       final prefs = await SharedPreferences.getInstance();
       _adblockEnabled = prefs.getBool(StorageKeys.adblockEnabled) ?? true;
+      _linksInNewTab = prefs.getBool(StorageKeys.linksInNewTab) ?? false;
       final home = prefs.getString(StorageKeys.homeUrl);
       if (home != null && home.isNotEmpty) _homeUrl = home;
       final raw = prefs.getString(StorageKeys.siteOverrides);
@@ -54,6 +59,12 @@ class SettingsStore extends ChangeNotifier {
     _adblockEnabled = value;
     notifyListeners();
     await _guard((p) => p.setBool(StorageKeys.adblockEnabled, value));
+  }
+
+  Future<void> setLinksInNewTab(bool value) async {
+    _linksInNewTab = value;
+    notifyListeners();
+    await _guard((p) => p.setBool(StorageKeys.linksInNewTab, value));
   }
 
   /// Simpan halaman awal. [url] kosong = kembali ke default.
