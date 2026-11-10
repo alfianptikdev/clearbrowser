@@ -2,6 +2,7 @@ import 'package:cleanbrowser/adblock/block_log.dart';
 import 'package:cleanbrowser/adblock/navigation_guard.dart';
 import 'package:cleanbrowser/adblock/request_guard.dart';
 import 'package:cleanbrowser/adblock/rule_engine.dart';
+import 'package:cleanbrowser/adblock/site_profiles.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -250,10 +251,43 @@ EXOCLICK.com
         'blob:https://site.test/abc',
         'data:text/plain,hi',
         'javascript:void(0)',
-        'chrome://settings',
       ]) {
         expect(guard.evaluate(url).blocked, isFalse, reason: url);
       }
+    });
+
+    test('skema app kustom di top-level diblokir', () {
+      expect(guard.evaluate('shopeeid://reactpath?x=1').blocked, isTrue);
+      expect(
+        guard.evaluate('shopeeid://x', isForMainFrame: false).blocked,
+        isFalse,
+      );
+    });
+
+    test('halaman video terkunci: lintas situs diblokir, allowHosts lolos', () {
+      guard.profiles = SiteProfiles.fromJson(
+        '{"sites":{"video.test":{"allowHosts":["alias.test"]}}}',
+      );
+      const src = 'https://www.video.test/e/1';
+      expect(
+        guard.evaluate('https://ads.example.net/x', sourceUrl: src).blocked,
+        isTrue,
+      );
+      expect(
+        guard.evaluate('https://cdn.video.test/x', sourceUrl: src).blocked,
+        isFalse,
+      );
+      expect(
+        guard.evaluate('https://alias.test/e/1', sourceUrl: src).blocked,
+        isFalse,
+      );
+      // Sumber tanpa profil tidak dikunci.
+      expect(
+        guard
+            .evaluate('https://ads.example.net/x', sourceUrl: 'https://x.com/')
+            .blocked,
+        isFalse,
+      );
     });
 
     test('navigasi ke host blocklist tetap lolos', () {

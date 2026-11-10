@@ -18,8 +18,11 @@ InAppWebViewSettings buildWebViewSettings() {
     userAgent: kDefaultUserAgent,
 
     // --- Popup (D6): window baru tidak boleh terbuka otomatis ---
+    // true agar window.open() JS sampai ke onCreateWindow, di mana
+    // PopupGuard yang memutuskan (allowlist OAuth vs blokir). Bila false,
+    // WebView memblokir diam-diam dan callback tidak pernah dipanggil.
     supportMultipleWindows: true,
-    javaScriptCanOpenWindowsAutomatically: false,
+    javaScriptCanOpenWindowsAutomatically: true,
 
     // --- Video (FR-03) ---
     mediaPlaybackRequiresUserGesture: false,

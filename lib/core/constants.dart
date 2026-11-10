@@ -17,6 +17,8 @@ class StorageKeys {
 
   static const String adblockEnabled = 'settings.adblockEnabled';
   static const String allowlist = 'settings.allowlist';
+  static const String learnedHosts = 'rules.learnedHosts';
+  static const String pinnedSites = 'settings.pinnedSites';
   static const String siteOverrides = 'settings.siteOverrides';
   static const String rulesHosts = 'rules.hosts';
   static const String rulesSites = 'rules.sites';

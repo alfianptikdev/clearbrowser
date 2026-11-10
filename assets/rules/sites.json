@@ -1,7 +1,105 @@
 {
-  "version": 1,
-  "updatedAt": "2026-11-09",
+  "version": 4,
+  "updatedAt": "2026-11-10",
   "globalUrlPatterns": [],
-  "blockTopLevel": [],
-  "sites": {}
+  "blockTopLevel": [
+    "enrtx.com",
+    "twinrdengine.com",
+    "ntxqy.com",
+    "ero-labs.global",
+    "ribzubacrche.cfd"
+  ],
+  "sites": {
+    "doodstream.com": {
+      "enabled": true,
+      "stealth": true,
+      "selectors": [
+        "div[class*='overlay-ad']",
+        "#ad-overlay",
+        "div[id^='ad_layer']"
+      ],
+      "closeSelectors": [
+        ".close-ad",
+        "button[aria-label*='lose' i]"
+      ],
+      "extraUrlPatterns": [],
+      "allowHosts": [],
+      "note": "Best-effort, belum diuji device. Popup saat klik area player; overlay fullscreen saat pause."
+    },
+    "dood.li": {
+      "enabled": true,
+      "stealth": true,
+      "selectors": [
+        "div[class*='overlay-ad']",
+        "#ad-overlay",
+        "div[id^='ad_layer']"
+      ],
+      "closeSelectors": [
+        ".close-ad",
+        "button[aria-label*='lose' i]"
+      ],
+      "extraUrlPatterns": [],
+      "allowHosts": [],
+      "note": "Mirror doodstream; best-effort, belum diuji device."
+    },
+    "videy.co": {
+      "enabled": true,
+      "stealth": false,
+      "selectors": [
+        "iframe[src*='ads']",
+        ".ad-banner"
+      ],
+      "closeSelectors": [],
+      "extraUrlPatterns": [],
+      "allowHosts": [],
+      "note": "Best-effort. Iklan banner di sekitar player, bukan overlay."
+    },
+    "fembed.com": {
+      "enabled": true,
+      "stealth": false,
+      "selectors": [],
+      "closeSelectors": [
+        ".close-ad",
+        "button[aria-label*='lose' i]"
+      ],
+      "extraUrlPatterns": [],
+      "allowHosts": [],
+      "note": "Best-effort, belum diuji device. Hanya sweep generik + close selector."
+    },
+    "streamtape.com": {
+      "enabled": true,
+      "stealth": false,
+      "selectors": [],
+      "closeSelectors": [
+        ".close-ad",
+        "button[aria-label*='lose' i]"
+      ],
+      "extraUrlPatterns": [],
+      "allowHosts": [],
+      "note": "Best-effort, belum diuji device. Overlay klik-pertama pada player; sweep generik."
+    },
+    "filecoster.com": {
+      "enabled": true,
+      "stealth": false,
+      "selectors": [],
+      "closeSelectors": [
+        ".close-ad",
+        "button[aria-label*='lose' i]"
+      ],
+      "extraUrlPatterns": [],
+      "allowHosts": [
+        "tribunvideo.com"
+      ],
+      "note": "Host video (link t.co/pemendek). Klik di halaman membajak tab utama ke enrtx.com → twinrdengine.com → ntxqy.com → ero-labs.global (diblokir via blockTopLevel). Selector overlay belum diketahui."
+    },
+    "vqko.de": {
+      "enabled": true,
+      "stealth": false,
+      "selectors": [],
+      "closeSelectors": [],
+      "extraUrlPatterns": [],
+      "allowHosts": [],
+      "note": "Host video mirip filecoster (/f/<id>), terlihat di log device. Selector belum diketahui."
+    }
+  }
 }

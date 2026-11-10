@@ -12,6 +12,8 @@ class AddressBar extends StatelessWidget {
     required this.onReload,
     required this.onStop,
     this.onMenu,
+    this.onTogglePin,
+    this.isPinned = false,
     this.canGoBack = false,
     this.canGoForward = false,
     this.isLoading = false,
@@ -30,6 +32,10 @@ class AddressBar extends StatelessWidget {
   /// Dibuka lewat ikon perisai; sementara berisi log blokir (M2), nanti
   /// pindah ke Settings di M4.
   final VoidCallback? onMenu;
+
+  /// Tandai/lepas situs video (halaman terkunci + sweep kosmetik).
+  final VoidCallback? onTogglePin;
+  final bool isPinned;
 
   final bool canGoBack;
   final bool canGoForward;
@@ -133,6 +139,14 @@ class AddressBar extends StatelessWidget {
                     icon: isLoading ? Icons.close : Icons.refresh,
                     tooltip: isLoading ? 'Berhenti' : 'Muat ulang',
                     onPressed: isLoading ? onStop : onReload,
+                  ),
+                  _NavButton(
+                    key: const Key('btn-pin'),
+                    icon: isPinned ? Icons.push_pin : Icons.push_pin_outlined,
+                    tooltip: isPinned
+                        ? 'Lepas tanda situs video'
+                        : 'Tandai situs video',
+                    onPressed: onTogglePin,
                   ),
                   _NavButton(
                     key: const Key('btn-block-log'),

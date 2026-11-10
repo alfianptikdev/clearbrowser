@@ -52,6 +52,10 @@ class RuleEngine {
   final Set<String> _hosts = <String>{};
   final Set<String> _allowlist = <String>{};
   final Set<String> _topLevelBlocked = <String>{};
+
+  /// Situs iklan yang dipelajari otomatis dari halaman video (persisten).
+  final Set<String> _learned = <String>{};
+  static const int maxLearned = 1000;
   final List<({String source, RegExp regex})> _urlPatterns = [];
 
   bool get isLoaded => _hosts.isNotEmpty;
@@ -59,6 +63,8 @@ class RuleEngine {
   int get hostCount => _hosts.length;
 
   Set<String> get allowlist => Set<String>.unmodifiable(_allowlist);
+
+  Set<String> get learned => Set<String>.unmodifiable(_learned);
 
   Set<String> get topLevelBlocked => Set<String>.unmodifiable(_topLevelBlocked);
 
@@ -142,6 +148,49 @@ class RuleEngine {
   }
 
   // ---------------------------------------------------------------------------
+  // Host yang dipelajari
+  // ---------------------------------------------------------------------------
+
+  /// Situs (domain terdaftar) dari host: `a.b.example.com` → `example.com`,
+  /// `x.shop.co.id` → `shop.co.id`. shortcut: heuristik panjang label, bukan
+  /// public-suffix-list penuh.
+  static String siteOf(String rawHost) {
+    final parts = normalizeHost(rawHost).split('.');
+    if (parts.length <= 2) return parts.join('.');
+    final multi = parts.last.length == 2 && parts[parts.length - 2].length <= 3;
+    return parts.sublist(parts.length - (multi ? 3 : 2)).join('.');
+  }
+
+  Future<void> loadLearned() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      _learned
+        ..clear()
+        ..addAll(prefs.getStringList(StorageKeys.learnedHosts) ?? const []);
+    } catch (error) {
+      Log.e('rules', 'gagal memuat host terpelajari, fail-open', error);
+    }
+  }
+
+  /// Blokir situs [rawHost] mulai sekarang (subresource, popup, navigasi).
+  /// Allowlist pengguna tetap menang. Mengembalikan true bila baru dipelajari.
+  Future<bool> learn(String rawHost) async {
+    final site = siteOf(rawHost);
+    if (site.isEmpty || !site.contains('.')) return false;
+    if (isAllowlisted(site) || _learned.contains(site)) return false;
+    if (_learned.length >= maxLearned) _learned.remove(_learned.first);
+    _learned.add(site);
+    Log.d('rules', 'belajar: $site (${_learned.length} total)');
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setStringList(StorageKeys.learnedHosts, _learned.toList());
+    } catch (error) {
+      Log.e('rules', 'gagal menyimpan host terpelajari', error);
+    }
+    return true;
+  }
+
+  // ---------------------------------------------------------------------------
   // Allowlist pengguna
   // ---------------------------------------------------------------------------
 
@@ -189,14 +238,19 @@ class RuleEngine {
   bool isBlockedHost(String host) => matchBlockedHost(host) != null;
 
   /// Host yang cocok dengan blocklist, atau `null`.
-  String? matchBlockedHost(String rawHost) =>
-      _matchDomain(_hosts, normalizeHost(rawHost));
+  String? matchBlockedHost(String rawHost) {
+    final host = normalizeHost(rawHost);
+    return _matchDomain(_hosts, host) ?? _matchDomain(_learned, host);
+  }
 
   bool isAllowlisted(String rawHost) =>
       _matchDomain(_allowlist, normalizeHost(rawHost)) != null;
 
-  bool isTopLevelBlocked(String rawHost) =>
-      _matchDomain(_topLevelBlocked, normalizeHost(rawHost)) != null;
+  bool isTopLevelBlocked(String rawHost) {
+    final host = normalizeHost(rawHost);
+    return _matchDomain(_topLevelBlocked, host) != null ||
+        _matchDomain(_learned, host) != null;
+  }
 
   /// Suffix per label, maksimum [maxLabelLookups] iterasi.
   ///
