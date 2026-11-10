@@ -11,14 +11,14 @@ Terakhir diperbarui: 2026-11-10 · Sesi: 3 (M2 lanjutan + M3 + M4)
 | M1 | Browser shell + WebView tuning | `DONE` | 1 | `6ebcc02` | Fullscreen video belum diuji di device fisik |
 | M2 | Adblock jaringan + navigasi + popup + log | `DONE` | 2–3 | `483bb4e`, `0cfd960` | Diuji pemilik di device (SM A525F): popup diblokir, link `t.co`→`filecoster.com` terbuka, video play, redirect iklan diblokir |
 | M3 | Cosmetic engine + site profile | `DONE` | 3 | `0cfd960` | Kode + test lulus; diuji dan berhasil di device oleh pemilik |
-| M4 | Rule pack remote + settings + history/tab | `DONE` | 3–4 | `7f44854`, `5e6b6a6` | Tab, history, bookmark, settings lulus uji device. Update rule pack belum bisa diuji: URL belum dikonfigurasi (masalah #10) |
+| M4 | Rule pack remote + settings + history/tab | `DONE` | 3–4 | `7f44854`, `5e6b6a6` | Tab, history, bookmark, settings lulus uji device. Update rule pack diuji berhasil di device (sesi 5) |
 | M5 | Mode Video Bersih (native player) | `TODO` | — | — | Opsional, v1.1 |
 
 Legenda: `TODO` · `IN_PROGRESS` · `BLOCKED` · `DONE`
 
 ## 2. Sesi berikutnya
 
-M1–M4 `DONE`. Sisa: isi URL rule pack (`assets/rules/version.json`) lalu uji Update (masalah #10), atau mulai M5 (opsional, hanya jika terbukti perlu).
+M1–M4 `DONE`. Sisa: uji Update dengan perubahan isi nyata + mode pesawat (opsional), atau mulai M5 (opsional, hanya jika terbukti perlu).
 
 ## 3. Keputusan yang sudah final
 
@@ -65,7 +65,7 @@ Format: `Sesi N — Mx — hasil — commit — catatan`
 | 7 | Host terpelajari/situs ditandai belum bisa dilihat/dihapus | Terbuka | Allowlist menang atas host terpelajari; layar kelola di M4 |
 | 8 | Link sah yang diketuk di halaman terkunci ikut dipelajari sebagai iklan | Terbuka | Allowlist pengguna |
 | 9 | `RuleEngine.siteOf` heuristik panjang label, bukan public-suffix-list | Diketahui | Cukup untuk TLD `.co.id`-style |
-| 10 | URL rule pack kosong → tombol Update tersembunyi, kriteria Update/mode pesawat belum bisa dibuktikan di device | Terbuka | Isi `hostsUrl`/`sitesUrl` di `assets/rules/version.json` atau `core/constants.dart` |
+| 10 | URL rule pack kosong → tombol Update tersembunyi | Selesai | URL diisi ke repo `alfianptikdev/clearbrowser`; tombol Update muncul dan berhasil di device (SM A525F). Belum diuji: update dengan perubahan isi nyata dan mode pesawat |
 | 11 | Persist daftar tab (opsional M4) dan ETag update belum dibuat | Ditunda | `// shortcut:` di `rule_pack_loader.dart`; tab hilang saat app ditutup |
 
 ## 6. Catatan handoff terakhir
