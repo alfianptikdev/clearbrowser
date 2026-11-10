@@ -1,6 +1,6 @@
 {
   "version": 1,
   "updatedAt": "2026-11-10",
-  "hostsUrl": "",
-  "sitesUrl": ""
+  "hostsUrl": "https://raw.githubusercontent.com/alfianptikdev/clearbrowser/main/assets/rules/hosts.txt",
+  "sitesUrl": "https://raw.githubusercontent.com/alfianptikdev/clearbrowser/main/assets/rules/sites.json"
 }
