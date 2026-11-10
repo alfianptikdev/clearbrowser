@@ -36,9 +36,13 @@ class PopupGuard {
   final BlockLog log;
   final Set<String> _popupAllowlist;
 
+  /// Toggle global "Blokir iklan". Off → semua popup ditampilkan.
+  bool enabled = true;
+
   PopupResult handle({String? targetUrl, String? currentUrl}) {
     final url = targetUrl ?? currentUrl ?? '(tanpa URL)';
     final host = Uri.tryParse(url)?.host.toLowerCase() ?? '';
+    if (!enabled) return PopupResult(PopupAction.show, url: url);
 
     // Domain allowlist → tampilkan popup view (jangan navigasi tab saat ini:
     // halaman pemanggil harus tetap hidup agar alur OAuth selesai).

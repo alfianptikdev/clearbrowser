@@ -26,6 +26,17 @@ class SiteProfile {
   final List<String> allowHosts;
   final String note;
 
+  SiteProfile copyWith({bool? enabled}) => SiteProfile(
+    domain: domain,
+    enabled: enabled ?? this.enabled,
+    stealth: stealth,
+    selectors: selectors,
+    closeSelectors: closeSelectors,
+    extraUrlPatterns: extraUrlPatterns,
+    allowHosts: allowHosts,
+    note: note,
+  );
+
   /// Field hilang/salah tipe → default; tidak pernah melempar.
   factory SiteProfile.fromJson(String domain, Object? json) {
     final m = json is Map ? json : const {};
@@ -87,6 +98,20 @@ class SiteProfiles {
     }
     return SiteProfiles(
       merged,
+      blockTopLevel: blockTopLevel,
+      globalUrlPatterns: globalUrlPatterns,
+    );
+  }
+
+  /// Terapkan toggle per-situs pengguna (`domain` → enabled).
+  SiteProfiles withOverrides(Map<String, bool> overrides) {
+    return SiteProfiles(
+      {
+        for (final e in _profiles.entries)
+          e.key: overrides.containsKey(e.key)
+              ? e.value.copyWith(enabled: overrides[e.key])
+              : e.value,
+      },
       blockTopLevel: blockTopLevel,
       globalUrlPatterns: globalUrlPatterns,
     );

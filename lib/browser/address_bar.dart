@@ -11,7 +11,8 @@ class AddressBar extends StatelessWidget {
     required this.onForward,
     required this.onReload,
     required this.onStop,
-    this.onMenu,
+    this.onMenuSelected,
+    this.isBookmarked = false,
     this.onTogglePin,
     this.isPinned = false,
     this.canGoBack = false,
@@ -29,9 +30,9 @@ class AddressBar extends StatelessWidget {
   final VoidCallback onReload;
   final VoidCallback onStop;
 
-  /// Dibuka lewat ikon perisai; sementara berisi log blokir (M2), nanti
-  /// pindah ke Settings di M4.
-  final VoidCallback? onMenu;
+  /// Menu ⋮: nilai `bookmark`, `blocklog`, `settings`.
+  final ValueChanged<String>? onMenuSelected;
+  final bool isBookmarked;
 
   /// Tandai/lepas situs video (halaman terkunci + sweep kosmetik).
   final VoidCallback? onTogglePin;
@@ -148,11 +149,28 @@ class AddressBar extends StatelessWidget {
                         : 'Tandai situs video',
                     onPressed: onTogglePin,
                   ),
-                  _NavButton(
-                    key: const Key('btn-block-log'),
-                    icon: Icons.shield_outlined,
-                    tooltip: 'Log blokir',
-                    onPressed: onMenu,
+                  PopupMenuButton<String>(
+                    key: const Key('btn-menu'),
+                    tooltip: 'Menu',
+                    icon: const Icon(Icons.more_vert, size: 18),
+                    padding: const EdgeInsets.all(8),
+                    onSelected: onMenuSelected,
+                    itemBuilder: (_) => [
+                      PopupMenuItem(
+                        value: 'bookmark',
+                        child: Text(
+                          isBookmarked ? 'Hapus bookmark' : 'Tambah bookmark',
+                        ),
+                      ),
+                      const PopupMenuItem(
+                        value: 'blocklog',
+                        child: Text('Log blokir'),
+                      ),
+                      const PopupMenuItem(
+                        value: 'settings',
+                        child: Text('Pengaturan'),
+                      ),
+                    ],
                   ),
                 ],
               ),

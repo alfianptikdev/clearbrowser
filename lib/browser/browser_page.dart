@@ -5,7 +5,6 @@ import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 import '../adblock/block_log.dart';
 import '../adblock/cosmetic_script.dart';
@@ -13,13 +12,20 @@ import '../adblock/navigation_guard.dart';
 import '../adblock/popup_guard.dart';
 import '../adblock/request_guard.dart';
 import '../adblock/rule_engine.dart';
+import '../adblock/rule_pack_loader.dart';
 import '../adblock/site_profiles.dart';
 import '../core/constants.dart';
 import '../core/logger.dart';
 import '../core/url_utils.dart';
+import '../data/bookmark_store.dart';
+import '../data/history_store.dart';
+import '../data/settings_store.dart';
 import '../ui/block_log_sheet.dart';
 import '../ui/cosmetic_test_page.dart';
+import '../ui/settings_page.dart';
 import 'address_bar.dart';
+import 'tab_manager.dart';
+import 'tab_view_stack.dart';
 import 'webview_setup.dart';
 
 class BrowserPage extends StatefulWidget {
@@ -27,13 +33,6 @@ class BrowserPage extends StatefulWidget {
 
   @override
   State<BrowserPage> createState() => _BrowserPageState();
-}
-
-class _PageError {
-  const _PageError({required this.url, required this.description});
-
-  final String url;
-  final String description;
 }
 
 /// Sesi satu popup (D6 + pengecualian allowlist OAuth).
@@ -57,8 +56,6 @@ class _BrowserPageState extends State<BrowserPage> {
   );
   final FocusNode _focusNode = FocusNode();
 
-  InAppWebViewController? _webView;
-
   // Adblock layer (M2). Semua keputusan lewat guard; page hanya memetakan
   // hasilnya ke callback WebView.
   final RuleEngine _ruleEngine = RuleEngine();
@@ -73,20 +70,25 @@ class _BrowserPageState extends State<BrowserPage> {
   );
   late final PopupGuard _popupGuard = PopupGuard(log: _blockLog);
 
-  String _currentUrl = kHomeUrl;
-  double _progress = 0;
-  bool _isLoading = true;
-  bool _canGoBack = false;
-  bool _canGoForward = false;
   bool _isFullscreen = false;
-  _PageError? _error;
   _PopupSession? _popup;
+
+  // Tab (M4): state per tab di BrowserTab; getter di bawah = tab aktif.
+  final TabManager _tabs = TabManager(homeUrl: kHomeUrl);
+  BrowserTab get _tab => _tabs.active;
+  String get _currentUrl => _tab.url;
+
+  // Data & pengaturan (M4).
+  final SettingsStore _settings = SettingsStore();
+  final HistoryStore _history = HistoryStore();
+  final BookmarkStore _bookmarks = BookmarkStore();
+  final RulePackLoader _loader = RulePackLoader();
+  String _packLabel = '-';
 
   /// Skrip kosmetik (M3). WebView baru dibuat setelah ini siap karena
   /// `initialUserScripts` hanya dibaca saat pembuatan.
   String? _cosmeticJs;
   SiteProfiles _baseProfiles = SiteProfiles.empty();
-  final Set<String> _userSites = <String>{};
 
   @override
   void initState() {
@@ -97,19 +99,33 @@ class _BrowserPageState extends State<BrowserPage> {
   /// Dimuat setelah frame pertama agar startup tidak menunggu I/O.
   /// Gagal memuat = adblock kosong, bukan crash (fail-open).
   Future<void> _initAdblock() async {
-    await _ruleEngine.loadFromAssets();
     await _ruleEngine.loadAllowlist();
     await _ruleEngine.loadLearned();
-    _baseProfiles = await SiteProfiles.load();
+    await _settings.load();
+    await _history.load();
+    await _bookmarks.load();
+    _applyPack(await _loader.load());
+    _settings.addListener(_onSettingsChanged);
+  }
+
+  /// Terapkan rule pack (cache/asset/hasil update) ke engine dan profil.
+  void _applyPack(RulePack pack) {
+    _ruleEngine.loadFromString(pack.hosts);
+    _baseProfiles = SiteProfiles.fromJson(pack.sites);
     _ruleEngine.setTopLevelBlocked(_baseProfiles.blockTopLevel);
     _ruleEngine.setUrlPatterns(_baseProfiles.globalUrlPatterns);
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      _userSites.addAll(prefs.getStringList(StorageKeys.pinnedSites) ?? []);
-    } catch (error) {
-      Log.e('adblock', 'gagal memuat situs ditandai', error);
-    }
+    _packLabel = pack.versionLabel;
     _applyProfiles();
+  }
+
+  Future<UpdateResult> _updateRulePack() async {
+    final result = await _loader.update();
+    final pack = result.pack;
+    if (result.ok && pack != null) {
+      _applyPack(pack);
+      await _refreshScripts();
+    }
+    return result;
   }
 
   UserScript _cosmeticUserScript(String js) => UserScript(
@@ -118,13 +134,38 @@ class _BrowserPageState extends State<BrowserPage> {
     forMainFrameOnly: false,
   );
 
-  /// Gabungkan profil `sites.json` + situs yang ditandai pengguna, lalu
-  /// bangun ulang skrip kosmetik dan kunci navigasi.
+  /// Gabungkan profil `sites.json` + override + situs yang ditandai, lalu
+  /// bangun ulang skrip kosmetik dan kunci navigasi. Toggle global off →
+  /// semua guard dan skrip nonaktif.
   void _applyProfiles() {
-    final merged = _baseProfiles.withUserSites(_userSites);
+    final on = _settings.adblockEnabled;
+    _ruleEngine.enabled = on;
+    _popupGuard.enabled = on;
+    final merged = on
+        ? _baseProfiles
+              .withOverrides(_settings.siteOverrides)
+              .withUserSites(_settings.userSites)
+        : SiteProfiles.empty();
     _navigationGuard.profiles = merged;
     final js = CosmeticScript.build(merged);
     if (mounted) setState(() => _cosmeticJs = js);
+  }
+
+  /// UserScript hanya berlaku di muatan berikutnya → ganti skrip di semua tab,
+  /// lalu muat ulang tab aktif.
+  Future<void> _refreshScripts() async {
+    final js = _cosmeticJs;
+    if (js == null) return;
+    for (final tab in _tabs.tabs) {
+      await tab.controller?.removeAllUserScripts();
+      await tab.controller?.addUserScript(userScript: _cosmeticUserScript(js));
+    }
+    await _tab.controller?.reload();
+  }
+
+  void _onSettingsChanged() {
+    _applyProfiles();
+    unawaited(_refreshScripts());
   }
 
   Future<void> _togglePin() async {
@@ -138,21 +179,7 @@ class _BrowserPageState extends State<BrowserPage> {
       return;
     }
     final site = RuleEngine.siteOf(host);
-    final added = _userSites.add(site);
-    if (!added) _userSites.remove(site);
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setStringList(StorageKeys.pinnedSites, _userSites.toList());
-    } catch (error) {
-      Log.e('adblock', 'gagal menyimpan situs ditandai', error);
-    }
-    _applyProfiles();
-    // UserScript hanya berlaku di muatan berikutnya → ganti skrip, muat ulang.
-    await _webView?.removeAllUserScripts();
-    await _webView?.addUserScript(
-      userScript: _cosmeticUserScript(_cosmeticJs!),
-    );
-    await _webView?.reload();
+    final added = await _settings.toggleUserSite(site);
     messenger.showSnackBar(
       SnackBar(
         content: Text(added ? '$site ditandai situs video' : '$site dilepas'),
@@ -160,15 +187,59 @@ class _BrowserPageState extends State<BrowserPage> {
     );
   }
 
+  Future<void> _toggleBookmark() async {
+    final messenger = ScaffoldMessenger.of(context);
+    final added = await _bookmarks.toggle(_tab.url, _tab.title);
+    if (!mounted) return;
+    setState(() {});
+    messenger.showSnackBar(
+      SnackBar(
+        content: Text(added ? 'Bookmark ditambahkan' : 'Bookmark dihapus'),
+      ),
+    );
+  }
+
+  Future<void> _openSettings() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => SettingsPage(
+          settings: _settings,
+          engine: _ruleEngine,
+          log: _blockLog,
+          loader: _loader,
+          history: _history,
+          bookmarks: _bookmarks,
+          baseProfiles: () => _baseProfiles,
+          versionLabel: () => _packLabel,
+          onUpdate: _updateRulePack,
+          onOpenUrl: _loadUrl,
+        ),
+      ),
+    );
+    if (mounted) setState(() {});
+  }
+
+  void _onMenu(String value) {
+    switch (value) {
+      case 'bookmark':
+        _toggleBookmark();
+      case 'blocklog':
+        _openBlockLog();
+      case 'settings':
+        _openSettings();
+    }
+  }
+
   /// Host iklan dipelajari hanya bila dibuka dari halaman video terkunci.
-  void _learn(String url) {
-    if (!_navigationGuard.shouldLearn(_currentUrl, url)) return;
+  void _learn(BrowserTab tab, String url) {
+    if (!_navigationGuard.shouldLearn(tab.url, url)) return;
     final host = hostOf(url);
     if (host.isNotEmpty) unawaited(_ruleEngine.learn(host));
   }
 
   @override
   void dispose() {
+    _settings.removeListener(_onSettingsChanged);
     _urlController.dispose();
     _focusNode.dispose();
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
@@ -192,43 +263,47 @@ class _BrowserPageState extends State<BrowserPage> {
     await _loadUrl(url);
   }
 
-  Future<void> _loadUrl(String url) async {
+  /// Muat [url] di tab aktif (atau [tab]).
+  Future<void> _loadUrl(String url, {BrowserTab? tab}) async {
+    final target = tab ?? _tab;
     Log.d('nav', 'loadUrl $url');
-    _urlController.text = url;
+    if (target == _tab) _urlController.text = url;
     if (mounted) {
       setState(() {
-        _error = null;
-        _isLoading = true;
-        _progress = 0;
-        _currentUrl = url;
+        target.error = null;
+        target.isLoading = true;
+        target.progress = 0;
+        target.url = url;
       });
     }
     try {
-      await _webView?.loadUrl(urlRequest: URLRequest(url: WebUri(url)));
+      await target.controller?.loadUrl(
+        urlRequest: URLRequest(url: WebUri(url)),
+      );
     } catch (error) {
       Log.e('nav', 'loadUrl gagal: $url', error);
     }
   }
 
-  void _setUrl(String url) {
+  void _setUrl(BrowserTab tab, String url) {
     if (url.isEmpty || url == 'about:blank') return;
-    if (!_focusNode.hasFocus && _urlController.text != url) {
+    if (tab == _tab && !_focusNode.hasFocus && _urlController.text != url) {
       _urlController.text = url;
     }
-    if (url == _currentUrl) return;
-    setState(() => _currentUrl = url);
+    if (url == tab.url) return;
+    setState(() => tab.url = url);
   }
 
-  Future<void> _syncNavState([InAppWebViewController? controller]) async {
-    final webView = controller ?? _webView;
+  Future<void> _syncNavState(BrowserTab tab) async {
+    final webView = tab.controller;
     if (webView == null) return;
     final canGoBack = await webView.canGoBack();
     final canGoForward = await webView.canGoForward();
     if (!mounted) return;
-    if (canGoBack == _canGoBack && canGoForward == _canGoForward) return;
+    if (canGoBack == tab.canGoBack && canGoForward == tab.canGoForward) return;
     setState(() {
-      _canGoBack = canGoBack;
-      _canGoForward = canGoForward;
+      tab.canGoBack = canGoBack;
+      tab.canGoForward = canGoForward;
     });
   }
 
@@ -238,12 +313,31 @@ class _BrowserPageState extends State<BrowserPage> {
       await SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
       return;
     }
-    final webView = _webView;
+    final webView = _tab.controller;
     if (webView != null && await webView.canGoBack()) {
       await webView.goBack();
     } else {
       await SystemNavigator.pop();
     }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Tab
+  // ---------------------------------------------------------------------------
+
+  void _selectTab(BrowserTab tab) {
+    setState(() => _tabs.activate(tab));
+    _urlController.text = tab.url;
+  }
+
+  void _closeTab(BrowserTab tab) {
+    setState(() => _tabs.close(tab));
+    _urlController.text = _tab.url;
+  }
+
+  void _newTab() {
+    setState(() => _tabs.open(kHomeUrl));
+    _urlController.text = kHomeUrl;
   }
 
   Future<void> _openBlockLog() async {
@@ -305,7 +399,7 @@ class _BrowserPageState extends State<BrowserPage> {
     );
     Log.d('popup', 'URL asli $target → ${result.action}');
     if (result.action == PopupAction.block) {
-      _learn(target);
+      _learn(_tab, target);
       // Matikan sebelum iklan sempat tampil (panel pernah tampil sebentar
       // sebagai scrim netral, bukan konten iklan).
       _closePopup();
@@ -436,45 +530,52 @@ class _BrowserPageState extends State<BrowserPage> {
   // Callback WebView
   // ---------------------------------------------------------------------------
 
-  void _onLoadStart(InAppWebViewController controller, WebUri? url) {
+  void _onLoadStart(BrowserTab tab, InAppWebViewController c, WebUri? url) {
     if (!mounted) return;
     setState(() {
-      _isLoading = true;
-      _progress = 0;
-      _error = null;
+      tab.isLoading = true;
+      tab.progress = 0;
+      tab.error = null;
     });
   }
 
-  void _onProgressChanged(InAppWebViewController controller, int progress) {
+  void _onProgressChanged(BrowserTab tab, InAppWebViewController c, int p) {
     if (!mounted) return;
-    setState(() => _progress = (progress / 100).clamp(0.0, 1.0));
+    setState(() => tab.progress = (p / 100).clamp(0.0, 1.0));
   }
 
   Future<void> _onLoadStop(
+    BrowserTab tab,
     InAppWebViewController controller,
     WebUri? url,
   ) async {
     if (!mounted) return;
     setState(() {
-      _isLoading = false;
-      _progress = 1;
+      tab.isLoading = false;
+      tab.progress = 1;
     });
     final current = await controller.getUrl();
     if (!mounted) return;
-    if (current != null) _setUrl(current.toString());
-    await _syncNavState(controller);
+    if (current != null) _setUrl(tab, current.toString());
+    final title = await controller.getTitle() ?? '';
+    if (!mounted) return;
+    setState(() => tab.title = title);
+    unawaited(_history.add(tab.url, title));
+    await _syncNavState(tab);
   }
 
   void _onUpdateVisitedHistory(
-    InAppWebViewController controller,
+    BrowserTab tab,
+    InAppWebViewController c,
     WebUri? url,
     bool? isReload,
   ) {
-    if (url != null) _setUrl(url.toString());
-    _syncNavState(controller);
+    if (url != null) _setUrl(tab, url.toString());
+    _syncNavState(tab);
   }
 
   void _onReceivedError(
+    BrowserTab tab,
     InAppWebViewController controller,
     WebResourceRequest request,
     WebResourceError error,
@@ -485,9 +586,9 @@ class _BrowserPageState extends State<BrowserPage> {
     if (error.type == WebResourceErrorType.CANCELLED) return;
     if (!mounted) return;
     setState(() {
-      _isLoading = false;
-      _progress = 0;
-      _error = _PageError(
+      tab.isLoading = false;
+      tab.progress = 0;
+      tab.error = PageError(
         url: request.url.toString(),
         description: error.description,
       );
@@ -522,138 +623,39 @@ class _BrowserPageState extends State<BrowserPage> {
         backgroundColor: Colors.black,
         body: Column(
           children: [
-            if (!_isFullscreen)
+            if (!_isFullscreen) ...[
               AddressBar(
                 controller: _urlController,
                 focusNode: _focusNode,
                 onSubmitted: _submit,
-                onBack: () => _webView?.goBack(),
-                onForward: () => _webView?.goForward(),
-                onReload: () => _webView?.reload(),
-                onStop: () => _webView?.stopLoading(),
-                onMenu: _openBlockLog,
+                onBack: () => _tab.controller?.goBack(),
+                onForward: () => _tab.controller?.goForward(),
+                onReload: () => _tab.controller?.reload(),
+                onStop: () => _tab.controller?.stopLoading(),
+                onMenuSelected: _onMenu,
+                isBookmarked: _bookmarks.contains(_tab.url),
                 onTogglePin: _togglePin,
                 isPinned: _navigationGuard.isPinned(_currentUrl),
-                canGoBack: _canGoBack,
-                canGoForward: _canGoForward,
-                isLoading: _isLoading,
+                canGoBack: _tab.canGoBack,
+                canGoForward: _tab.canGoForward,
+                isLoading: _tab.isLoading,
                 isSecure: isSecureUrl(_currentUrl),
-                progress: _progress,
+                progress: _tab.progress,
               ),
+              TabStrip(
+                manager: _tabs,
+                onSelect: _selectTab,
+                onClose: _closeTab,
+                onNew: _newTab,
+              ),
+            ],
             Expanded(
               child: Stack(
                 children: [
                   if (_cosmeticJs == null)
                     const Center(child: CircularProgressIndicator())
                   else
-                    InAppWebView(
-                      initialSettings: buildWebViewSettings(),
-                      initialUserScripts: UnmodifiableListView([
-                        UserScript(
-                          source: _cosmeticJs!,
-                          injectionTime:
-                              UserScriptInjectionTime.AT_DOCUMENT_START,
-                          forMainFrameOnly: false,
-                        ),
-                      ]),
-                      initialUrlRequest: URLRequest(url: WebUri(kHomeUrl)),
-                      onWebViewCreated: (controller) {
-                        _webView = controller;
-                        _syncNavState(controller);
-                      },
-                      onLoadStart: _onLoadStart,
-                      onProgressChanged: _onProgressChanged,
-                      onLoadStop: _onLoadStop,
-                      onUpdateVisitedHistory: _onUpdateVisitedHistory,
-                      onReceivedError: _onReceivedError,
-                      onEnterFullscreen: _onEnterFullscreen,
-                      onExitFullscreen: _onExitFullscreen,
-                      // --- Adblock (M2) ---
-                      shouldOverrideUrlLoading: (controller, action) async {
-                        final url = action.request.url?.toString() ?? '';
-                        Log.d(
-                          'nav',
-                          'override main=${action.isForMainFrame} $url',
-                        );
-                        final decision = _navigationGuard.evaluate(
-                          url,
-                          isForMainFrame: action.isForMainFrame,
-                        );
-                        _navigationGuard.record(decision, url);
-                        if (decision.blocked) {
-                          if (decision.reason == 'pinned') _learn(url);
-                          Log.d(
-                            'nav',
-                            'diblokir nav: $url (${decision.reason})',
-                          );
-                        }
-                        return decision.blocked
-                            ? NavigationActionPolicy.CANCEL
-                            : NavigationActionPolicy.ALLOW;
-                      },
-                      shouldInterceptRequest: (controller, request) async =>
-                          _requestGuard.intercept(request),
-                      onCreateWindow: (controller, action) async {
-                        final target = action.request.url?.toString();
-                        final known =
-                            target != null &&
-                            target.isNotEmpty &&
-                            target != 'about:blank';
-                        Log.d(
-                          'popup',
-                          'onCreateWindow url=$target '
-                              'windowId=${action.windowId}',
-                        );
-                        if (known) {
-                          final result = _popupGuard.handle(
-                            targetUrl: target,
-                            currentUrl: _currentUrl,
-                          );
-                          Log.d('popup', 'keputusan: ${result.action} $target');
-                          if (result.action == PopupAction.block) {
-                            // URL diketahui = link yang diketuk pengguna
-                            // (window.open JS selalu null di Android). Buka di
-                            // tab ini, tetap lewat navigation guard.
-                            _learn(target);
-                            final nav = _navigationGuard.evaluate(
-                              target,
-                              sourceUrl: _currentUrl,
-                            );
-                            if (nav.blocked) {
-                              _navigationGuard.record(nav, target);
-                            } else {
-                              _loadUrl(target);
-                            }
-                            return false; // transport dibuang, popup tak ada
-                          }
-                          // Lolos allowlist: penuhi transport dengan WebView
-                          // popup agar window.opener halaman asli tetap hidup.
-                          _openPopup(
-                            windowId: action.windowId,
-                            decided: true,
-                            url: target,
-                          );
-                          return true;
-                        }
-                        // URL tak diketahui (window.open JS; Android tidak
-                        // menyampaikannya): buka panel netral lebih dulu, baca
-                        // URL asli di onLoadStart, baru putuskan blokir/tampil.
-                        _openPopup(windowId: action.windowId, decided: false);
-                        return true;
-                      },
-                      onConsoleMessage: (controller, message) {
-                        Log.d(
-                          'console',
-                          '${message.message} [${message.messageLevel}]',
-                        );
-                      },
-                    ),
-                  if (_error != null)
-                    _ErrorView(
-                      error: _error!,
-                      onRetry: () => _loadUrl(_error!.url),
-                      onHome: () => _loadUrl(kHomeUrl),
-                    ),
+                    TabViewStack(manager: _tabs, builder: _buildTabView),
                   if (_popup != null) _buildPopupView(),
                 ],
               ),
@@ -661,6 +663,101 @@ class _BrowserPageState extends State<BrowserPage> {
           ],
         ),
       ),
+    );
+  }
+
+  /// WebView satu tab + overlay error-nya.
+  Widget _buildTabView(BrowserTab tab) {
+    return Stack(
+      children: [
+        InAppWebView(
+          initialSettings: buildWebViewSettings(),
+          initialUserScripts: UnmodifiableListView([
+            _cosmeticUserScript(_cosmeticJs!),
+          ]),
+          initialUrlRequest: URLRequest(url: WebUri(tab.url)),
+          onWebViewCreated: (controller) {
+            tab.controller = controller;
+            _syncNavState(tab);
+          },
+          onLoadStart: (c, u) => _onLoadStart(tab, c, u),
+          onProgressChanged: (c, p) => _onProgressChanged(tab, c, p),
+          onLoadStop: (c, u) => _onLoadStop(tab, c, u),
+          onUpdateVisitedHistory: (c, u, r) =>
+              _onUpdateVisitedHistory(tab, c, u, r),
+          onReceivedError: (c, r, e) => _onReceivedError(tab, c, r, e),
+          onEnterFullscreen: _onEnterFullscreen,
+          onExitFullscreen: _onExitFullscreen,
+          // --- Adblock (M2) ---
+          shouldOverrideUrlLoading: (controller, action) async {
+            final url = action.request.url?.toString() ?? '';
+            Log.d('nav', 'override main=${action.isForMainFrame} $url');
+            final decision = _navigationGuard.evaluate(
+              url,
+              isForMainFrame: action.isForMainFrame,
+              sourceUrl: tab.url,
+            );
+            _navigationGuard.record(decision, url);
+            if (decision.blocked) {
+              if (decision.reason == 'pinned') _learn(tab, url);
+              Log.d('nav', 'diblokir nav: $url (${decision.reason})');
+            }
+            return decision.blocked
+                ? NavigationActionPolicy.CANCEL
+                : NavigationActionPolicy.ALLOW;
+          },
+          shouldInterceptRequest: (controller, request) async =>
+              _requestGuard.intercept(request),
+          onCreateWindow: (controller, action) async {
+            final target = action.request.url?.toString();
+            final known =
+                target != null && target.isNotEmpty && target != 'about:blank';
+            Log.d(
+              'popup',
+              'onCreateWindow url=$target windowId=${action.windowId}',
+            );
+            if (known) {
+              final result = _popupGuard.handle(
+                targetUrl: target,
+                currentUrl: tab.url,
+              );
+              Log.d('popup', 'keputusan: ${result.action} $target');
+              if (result.action == PopupAction.block) {
+                // URL diketahui = link yang diketuk pengguna (window.open JS
+                // selalu null di Android). Buka di tab ini, lewat guard.
+                _learn(tab, target);
+                final nav = _navigationGuard.evaluate(
+                  target,
+                  sourceUrl: tab.url,
+                );
+                if (nav.blocked) {
+                  _navigationGuard.record(nav, target);
+                } else {
+                  _loadUrl(target, tab: tab);
+                }
+                return false; // transport dibuang, popup tak ada
+              }
+              // Lolos allowlist: penuhi transport dengan WebView popup agar
+              // window.opener halaman asli tetap hidup.
+              _openPopup(windowId: action.windowId, decided: true, url: target);
+              return true;
+            }
+            // URL tak diketahui (window.open JS): panel netral dulu, baca URL
+            // asli di onLoadStart, baru putuskan blokir/tampil.
+            _openPopup(windowId: action.windowId, decided: false);
+            return true;
+          },
+          onConsoleMessage: (controller, message) {
+            Log.d('console', '${message.message} [${message.messageLevel}]');
+          },
+        ),
+        if (tab.error != null)
+          _ErrorView(
+            error: tab.error!,
+            onRetry: () => _loadUrl(tab.error!.url, tab: tab),
+            onHome: () => _loadUrl(kHomeUrl, tab: tab),
+          ),
+      ],
     );
   }
 }
@@ -672,7 +769,7 @@ class _ErrorView extends StatelessWidget {
     required this.onHome,
   });
 
-  final _PageError error;
+  final PageError error;
   final VoidCallback onRetry;
   final VoidCallback onHome;
 

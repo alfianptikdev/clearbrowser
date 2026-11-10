@@ -49,6 +49,9 @@ class RuleEngine {
 
   final AssetBundle? _bundle;
 
+  /// Toggle global "Blokir iklan". Off → semua request lolos.
+  bool enabled = true;
+
   final Set<String> _hosts = <String>{};
   final Set<String> _allowlist = <String>{};
   final Set<String> _topLevelBlocked = <String>{};
@@ -159,6 +162,16 @@ class RuleEngine {
     if (parts.length <= 2) return parts.join('.');
     final multi = parts.last.length == 2 && parts[parts.length - 2].length <= 3;
     return parts.sublist(parts.length - (multi ? 3 : 2)).join('.');
+  }
+
+  Future<void> unlearn(String site) async {
+    if (!_learned.remove(site)) return;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setStringList(StorageKeys.learnedHosts, _learned.toList());
+    } catch (error) {
+      Log.e('rules', 'gagal menyimpan host terpelajari', error);
+    }
   }
 
   Future<void> loadLearned() async {
@@ -305,6 +318,7 @@ class RuleEngine {
 
   /// Urutan mengikuti `docs/ARCHITECTURE.md` §2.2. Semua exception → allow.
   BlockDecision evaluate(RequestKind kind, Uri uri) {
+    if (!enabled) return const BlockDecision.allow('disabled');
     try {
       final scheme = uri.scheme.toLowerCase();
 

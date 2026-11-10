@@ -34,6 +34,11 @@ const String kDefaultUserAgent =
     'Mozilla/5.0 (Linux; Android 14; Pixel 7) AppleWebKit/537.36 '
     '(KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36';
 
+/// URL rule pack default bila `version.json` kosong. Kosong = fitur Update
+/// disembunyikan ("URL rule pack belum dikonfigurasi").
+const String kRuleHostsUrl = '';
+const String kRuleSitesUrl = '';
+
 const String kHomeUrl = 'https://duckduckgo.com';
 const String kSearchUrl = 'https://duckduckgo.com/?q=';
 

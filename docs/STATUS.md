@@ -2,7 +2,7 @@
 
 **Berkas ini wajib di-update di akhir setiap sesi agent.** Ini satu-satunya sumber kebenaran tentang "sudah sampai mana".
 
-Terakhir diperbarui: 2026-11-10 · Sesi: 3 (M2 lanjutan + M3)
+Terakhir diperbarui: 2026-11-10 · Sesi: 3 (M2 lanjutan + M3 + M4)
 
 ## 1. Papan milestone
 
@@ -11,14 +11,14 @@ Terakhir diperbarui: 2026-11-10 · Sesi: 3 (M2 lanjutan + M3)
 | M1 | Browser shell + WebView tuning | `DONE` | 1 | `6ebcc02` | Fullscreen video belum diuji di device fisik |
 | M2 | Adblock jaringan + navigasi + popup + log | `IN_PROGRESS` | 2–3 | — | Diuji pemilik di device (SM A525F): popup diblokir, link `t.co`→`filecoster.com` terbuka, video play, redirect iklan diblokir. Belum commit |
 | M3 | Cosmetic engine + site profile | `IN_PROGRESS` | 3 | — | Kode + 61 test lulus; video play & iklan terblokir di device (pemilik). Harness `cb:test` dan Doodstream/Videy belum dikonfirmasi |
-| M4 | Rule pack remote + settings + history/tab | `TODO` | — | — | Butuh M3 |
+| M4 | Rule pack remote + settings + history/tab | `IN_PROGRESS` | 3 | — | Kode + 76 test lulus; uji manual device oleh pemilik berjalan. URL rule pack belum dikonfigurasi (Update tersembunyi) |
 | M5 | Mode Video Bersih (native player) | `TODO` | — | — | Opsional, v1.1 |
 
 Legenda: `TODO` · `IN_PROGRESS` · `BLOCKED` · `DONE`
 
 ## 2. Sesi berikutnya
 
-Uji harness `cb:test` + Doodstream/Videy di device, lalu commit M2 dan M3 terpisah (kode M3 sudah menyatu di `browser_page.dart`; pisahkan per file bila perlu). Berikutnya M4 (layar kelola situs terpelajari/ditandai).
+Pemilik menguji M4 di device (tab, Settings, bookmark, history, toggle global, harness `cb:test`, Doodstream/Videy) lalu melapor kendala di sesi baru. Setelah lolos: tandai M2–M4 `DONE`. Isi URL rule pack (`assets/rules/version.json`) untuk menguji Update.
 
 ## 3. Keputusan yang sudah final
 
@@ -48,6 +48,7 @@ Format: `Sesi N — Mx — hasil — commit — catatan`
 | 1 | M1 | Shell browser jalan: WebView, address bar, progress, error view, normalisasi URL, fullscreen hook, 11 test | `6ebcc02` | Kode callback masih di `browser_page.dart` (belum `browser_controller.dart`) |
 | 2 | M2 | Lapisan adblock: rule engine (3560 host Peter Lowe + 8 manual), navigasi guard, request guard, popup guard (D6), blokir log + sheet, tombol menu perisai, 31 test baru | — | Kode test & build lulus. Uji device fisik Doodstream/Videy belum — emulator ANR-berulang di host 2015, tidak bisa melanjutkan manual UI di emulator |
 | 3 | M2+M3 | Perbaiki login Google x.com, link `t.co`; M3: `site_profiles`, `cosmetic_script`, `sites.json`, harness `cb:test`; pin situs video, belajar host iklan, kunci navigasi; 61 test | — | Diuji pemilik di device; log dibaca via `adb logcat` |
+| 3 | M4 | Rule pack loader (cache→asset, update tervalidasi, atomik), Settings, history/bookmark/settings store, multi-tab (maks 10, IndexedStack), menu ⋮; 76 test | — | Uji device belum dikonfirmasi; `flutter run` terputus saat layar HP mati (pakai Stay awake / `adb logcat`) |
 
 ## 5. Masalah yang diketahui
 
@@ -62,6 +63,8 @@ Format: `Sesi N — Mx — hasil — commit — catatan`
 | 7 | Host terpelajari/situs ditandai belum bisa dilihat/dihapus | Terbuka | Allowlist menang atas host terpelajari; layar kelola di M4 |
 | 8 | Link sah yang diketuk di halaman terkunci ikut dipelajari sebagai iklan | Terbuka | Allowlist pengguna |
 | 9 | `RuleEngine.siteOf` heuristik panjang label, bukan public-suffix-list | Diketahui | Cukup untuk TLD `.co.id`-style |
+| 10 | URL rule pack kosong → tombol Update tersembunyi, kriteria Update/mode pesawat belum bisa dibuktikan di device | Terbuka | Isi `hostsUrl`/`sitesUrl` di `assets/rules/version.json` atau `core/constants.dart` |
+| 11 | Persist daftar tab (opsional M4) dan ETag update belum dibuat | Ditunda | `// shortcut:` di `rule_pack_loader.dart`; tab hilang saat app ditutup |
 
 ## 6. Catatan handoff terakhir
 
@@ -78,3 +81,10 @@ Format: `Sesi N — Mx — hasil — commit — catatan`
 - Belum teruji: harness `cb:test`; Doodstream/Videy asli; selector `sites.json` (best-effort, kosong untuk filecoster/vqko); toggle `enabled`/`stealth` di prefs (ditunda M4).
 - Catatan untuk sesi berikut: satu skrip memuat semua profil dan memilih lewat `location.hostname`; host tanpa profil tidak disentuh skrip. `build()` menerima `SiteProfiles`, bukan satu `SiteProfile` (beda dari task M3). Allowlist `accounts.google.com` masih di Dart (pindah ke assets). Waspada cache build basi (masalah #6).
 - Commit: belum.
+
+### Sesi 3 (lanjutan) — M4 dikerjakan, belum DONE
+- Yang dibuat: `lib/adblock/rule_pack_loader.dart`, `assets/rules/version.json`, `lib/data/{history,bookmark,settings}_store.dart`, `lib/ui/settings_page.dart`, `lib/browser/{tab_manager,tab_view_stack}.dart`, `browser_page.dart` per-tab, menu ⋮ di `address_bar.dart`; `RuleEngine.enabled/unlearn`, `PopupGuard.enabled`, `SiteProfiles.withOverrides`; test `rule_pack_loader`, `data_stores`, `tab_manager`.
+- Verifikasi: analyze 0 issue · test 76 lulus · APK terpasang di SM A525F (isi kernel diverifikasi).
+- Belum teruji: semua kriteria M4 di device (pemilik menguji manual); Update rule pack nyata (tanpa URL); mode pesawat; memori 3 tab 1080p (NFR-03).
+- Catatan untuk sesi berikut: `browser_controller.dart` tetap belum dibuat (state per-tab ada di `BrowserTab`). Toggle Settings memuat ulang tab aktif. `flutter run` putus saat layar mati; cache build basi → `flutter clean` + cek `kernel_blob.bin`.
+- Commit: lihat git log.
