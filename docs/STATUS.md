@@ -9,16 +9,16 @@ Terakhir diperbarui: 2026-11-10 · Sesi: 3 (M2 lanjutan + M3 + M4)
 | # | Milestone | Status | Sesi | Commit | Catatan |
 |---|---|---|---|---|---|
 | M1 | Browser shell + WebView tuning | `DONE` | 1 | `6ebcc02` | Fullscreen video belum diuji di device fisik |
-| M2 | Adblock jaringan + navigasi + popup + log | `IN_PROGRESS` | 2–3 | — | Diuji pemilik di device (SM A525F): popup diblokir, link `t.co`→`filecoster.com` terbuka, video play, redirect iklan diblokir. Belum commit |
-| M3 | Cosmetic engine + site profile | `IN_PROGRESS` | 3 | — | Kode + 61 test lulus; video play & iklan terblokir di device (pemilik). Harness `cb:test` dan Doodstream/Videy belum dikonfirmasi |
-| M4 | Rule pack remote + settings + history/tab | `IN_PROGRESS` | 3 | — | Kode + 76 test lulus; uji manual device oleh pemilik berjalan. URL rule pack belum dikonfigurasi (Update tersembunyi) |
+| M2 | Adblock jaringan + navigasi + popup + log | `DONE` | 2–3 | `483bb4e`, `0cfd960` | Diuji pemilik di device (SM A525F): popup diblokir, link `t.co`→`filecoster.com` terbuka, video play, redirect iklan diblokir |
+| M3 | Cosmetic engine + site profile | `DONE` | 3 | `0cfd960` | Kode + test lulus; diuji dan berhasil di device oleh pemilik |
+| M4 | Rule pack remote + settings + history/tab | `DONE` | 3–4 | `7f44854`, `5e6b6a6` | Tab, history, bookmark, settings lulus uji device. Update rule pack belum bisa diuji: URL belum dikonfigurasi (masalah #10) |
 | M5 | Mode Video Bersih (native player) | `TODO` | — | — | Opsional, v1.1 |
 
 Legenda: `TODO` · `IN_PROGRESS` · `BLOCKED` · `DONE`
 
 ## 2. Sesi berikutnya
 
-Pemilik menguji M4 di device (tab, Settings, bookmark, history, toggle global, harness `cb:test`, Doodstream/Videy) lalu melapor kendala di sesi baru. Setelah lolos: tandai M2–M4 `DONE`. Isi URL rule pack (`assets/rules/version.json`) untuk menguji Update.
+M1–M4 `DONE`. Sisa: isi URL rule pack (`assets/rules/version.json`) lalu uji Update (masalah #10), atau mulai M5 (opsional, hanya jika terbukti perlu).
 
 ## 3. Keputusan yang sudah final
 
