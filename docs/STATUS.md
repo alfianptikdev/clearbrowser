@@ -49,6 +49,8 @@ Format: `Sesi N — Mx — hasil — commit — catatan`
 | 2 | M2 | Lapisan adblock: rule engine (3560 host Peter Lowe + 8 manual), navigasi guard, request guard, popup guard (D6), blokir log + sheet, tombol menu perisai, 31 test baru | — | Kode test & build lulus. Uji device fisik Doodstream/Videy belum — emulator ANR-berulang di host 2015, tidak bisa melanjutkan manual UI di emulator |
 | 3 | M2+M3 | Perbaiki login Google x.com, link `t.co`; M3: `site_profiles`, `cosmetic_script`, `sites.json`, harness `cb:test`; pin situs video, belajar host iklan, kunci navigasi; 61 test | — | Diuji pemilik di device; log dibaca via `adb logcat` |
 | 3 | M4 | Rule pack loader (cache→asset, update tervalidasi, atomik), Settings, history/bookmark/settings store, multi-tab (maks 10, IndexedStack), menu ⋮; 76 test | — | Uji device belum dikonfirmasi; `flutter run` terputus saat layar HP mati (pakai Stay awake / `adb logcat`) |
+| 4 | M4 (polish) | Tekan-lama link → sheet: Buka di tab baru, Buka di tab latar, Salin link (`onLongPressHitTestResult`, hanya http/https); analyze 0 issue, 76 test hijau | — | Belum diuji di device pemilik |
+| 4 | M4 (polish) | Halaman awal bisa diatur (Settings → Umum, prefs `settings.homeUrl`, tombol Default); "Hapus semua history" dengan konfirmasi di atas bagian History | — | Link copy/tab baru sudah dikonfirmasi pemilik; fitur ini belum diuji di device |
 
 ## 5. Masalah yang diketahui
 

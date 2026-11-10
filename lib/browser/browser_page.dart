@@ -102,10 +102,25 @@ class _BrowserPageState extends State<BrowserPage> {
     await _ruleEngine.loadAllowlist();
     await _ruleEngine.loadLearned();
     await _settings.load();
+    _applyHomeUrl();
     await _history.load();
     await _bookmarks.load();
     _applyPack(await _loader.load());
     _settings.addListener(_onSettingsChanged);
+  }
+
+  /// Pakai halaman awal dari pengaturan. Tab pertama hanya diganti bila
+  /// WebView-nya belum dibuat (masih di URL beranda lama).
+  void _applyHomeUrl() {
+    final home = _settings.homeUrl;
+    final first = _tabs.tabs.first;
+    if (_tabs.tabs.length == 1 &&
+        first.controller == null &&
+        first.url == _tabs.homeUrl) {
+      first.url = home;
+      if (mounted) _urlController.text = home;
+    }
+    _tabs.homeUrl = home;
   }
 
   /// Terapkan rule pack (cache/asset/hasil update) ke engine dan profil.
@@ -336,8 +351,108 @@ class _BrowserPageState extends State<BrowserPage> {
   }
 
   void _newTab() {
-    setState(() => _tabs.open(kHomeUrl));
-    _urlController.text = kHomeUrl;
+    setState(() => _tabs.open(_settings.homeUrl));
+    _urlController.text = _settings.homeUrl;
+  }
+
+  /// Buka [url] di tab baru. [background] true = tab aktif tetap, halaman
+  /// awal tidak tersentuh.
+  void _openInNewTab(String url, {bool background = false}) {
+    final previous = _tab;
+    setState(() {
+      _tabs.open(url);
+      if (background) _tabs.activate(previous);
+    });
+    _urlController.text = _tab.url;
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text(
+            background ? 'Dibuka di tab latar' : 'Dibuka di tab baru',
+          ),
+          duration: const Duration(seconds: 2),
+        ),
+      );
+  }
+
+  Future<void> _copyLink(String url) async {
+    await Clipboard.setData(ClipboardData(text: url));
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        const SnackBar(
+          content: Text('Link disalin'),
+          duration: Duration(seconds: 2),
+        ),
+      );
+  }
+
+  /// Tekan-lama pada link/gambar-berlink: sheet aksi (salin, tab baru, tab latar).
+  Future<void> _onLongPress(
+    InAppWebViewController controller,
+    InAppWebViewHitTestResult hit,
+  ) async {
+    final type = hit.type;
+    if (type != InAppWebViewHitTestResultType.SRC_ANCHOR_TYPE &&
+        type != InAppWebViewHitTestResultType.SRC_IMAGE_ANCHOR_TYPE) {
+      return;
+    }
+    final url = hit.extra?.trim() ?? '';
+    final scheme = Uri.tryParse(url)?.scheme.toLowerCase();
+    if (url.isEmpty || (scheme != 'http' && scheme != 'https')) return;
+    if (!mounted) return;
+
+    final host = hostOf(url);
+    await showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (sheetContext) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(24, 0, 24, 8),
+              child: Text(
+                url,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(sheetContext).textTheme.bodySmall,
+              ),
+            ),
+            ListTile(
+              key: const Key('link-open-new-tab'),
+              leading: const Icon(Icons.open_in_new),
+              title: const Text('Buka di tab baru'),
+              subtitle: host.isNotEmpty ? Text(host) : null,
+              onTap: () {
+                Navigator.pop(sheetContext);
+                _openInNewTab(url);
+              },
+            ),
+            ListTile(
+              key: const Key('link-open-background'),
+              leading: const Icon(Icons.tab_unselected),
+              title: const Text('Buka di tab latar'),
+              onTap: () {
+                Navigator.pop(sheetContext);
+                _openInNewTab(url, background: true);
+              },
+            ),
+            ListTile(
+              key: const Key('link-copy'),
+              leading: const Icon(Icons.copy),
+              title: const Text('Salin link'),
+              onTap: () {
+                Navigator.pop(sheetContext);
+                _copyLink(url);
+              },
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   Future<void> _openBlockLog() async {
@@ -688,6 +803,7 @@ class _BrowserPageState extends State<BrowserPage> {
           onReceivedError: (c, r, e) => _onReceivedError(tab, c, r, e),
           onEnterFullscreen: _onEnterFullscreen,
           onExitFullscreen: _onExitFullscreen,
+          onLongPressHitTestResult: _onLongPress,
           // --- Adblock (M2) ---
           shouldOverrideUrlLoading: (controller, action) async {
             final url = action.request.url?.toString() ?? '';
@@ -755,7 +871,7 @@ class _BrowserPageState extends State<BrowserPage> {
           _ErrorView(
             error: tab.error!,
             onRetry: () => _loadUrl(tab.error!.url, tab: tab),
-            onHome: () => _loadUrl(kHomeUrl, tab: tab),
+            onHome: () => _loadUrl(_settings.homeUrl, tab: tab),
           ),
       ],
     );

@@ -5,6 +5,7 @@ import '../adblock/rule_engine.dart';
 import '../adblock/rule_pack_loader.dart';
 import '../adblock/site_profiles.dart';
 import '../core/constants.dart';
+import '../core/url_utils.dart';
 import '../data/bookmark_store.dart';
 import '../data/history_store.dart';
 import '../data/settings_store.dart';
@@ -68,6 +69,72 @@ class _SettingsPageState extends State<SettingsPage> {
     });
   }
 
+  Future<void> _editHome() async {
+    final controller = TextEditingController(text: widget.settings.homeUrl);
+    final result = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Halaman awal'),
+        content: TextField(
+          key: const Key('field-home-url'),
+          controller: controller,
+          autofocus: true,
+          keyboardType: TextInputType.url,
+          decoration: const InputDecoration(hintText: 'contoh: google.com'),
+          onSubmitted: (v) => Navigator.pop(ctx, v),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, ''),
+            child: const Text('Default'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Batal'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, controller.text),
+            child: const Text('Simpan'),
+          ),
+        ],
+      ),
+    );
+    // Jangan dispose di sini: animasi tutup dialog masih memakai TextField
+    // (assert `_dependents.isEmpty`). Controller tanpa listener aman di-GC.
+    if (result == null) return;
+    final trimmed = result.trim();
+    await widget.settings.setHomeUrl(
+      trimmed.isEmpty ? '' : normalizeInput(trimmed),
+    );
+  }
+
+  Future<void> _confirmClearHistory() async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Hapus semua history?'),
+        content: Text('${widget.history.entries.length} riwayat akan dihapus.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Batal'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Hapus semua'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    await widget.history.clear();
+    if (!mounted) return;
+    setState(() {});
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('History dihapus')));
+  }
+
   void _open(String url) {
     widget.onOpenUrl(url);
     Navigator.of(context).pop();
@@ -95,6 +162,15 @@ class _SettingsPageState extends State<SettingsPage> {
                 subtitle: const Text('Berlaku langsung di semua tab'),
                 value: s.adblockEnabled,
                 onChanged: s.setAdblockEnabled,
+              ),
+              const Divider(),
+              _header('Umum'),
+              ListTile(
+                key: const Key('btn-home-url'),
+                leading: const Icon(Icons.home_outlined),
+                title: const Text('Halaman awal'),
+                subtitle: Text(s.homeUrl, overflow: TextOverflow.ellipsis),
+                onTap: _editHome,
               ),
               const Divider(),
               _header('Rule pack'),
@@ -200,6 +276,14 @@ class _SettingsPageState extends State<SettingsPage> {
                 ),
               const Divider(),
               _header('History'),
+              ListTile(
+                key: const Key('btn-clear-history'),
+                leading: const Icon(Icons.delete_sweep_outlined),
+                title: const Text('Hapus semua history'),
+                subtitle: Text('${widget.history.entries.length} riwayat'),
+                enabled: widget.history.entries.isNotEmpty,
+                onTap: _confirmClearHistory,
+              ),
               if (widget.history.entries.isEmpty) _empty('Kosong'),
               for (final e in widget.history.entries.take(30))
                 ListTile(
@@ -211,15 +295,6 @@ class _SettingsPageState extends State<SettingsPage> {
                   subtitle: Text(e.url, overflow: TextOverflow.ellipsis),
                   onTap: () => _open(e.url),
                 ),
-              ListTile(
-                key: const Key('btn-clear-history'),
-                leading: const Icon(Icons.history_toggle_off),
-                title: const Text('Bersihkan history'),
-                onTap: () async {
-                  await widget.history.clear();
-                  if (mounted) setState(() {});
-                },
-              ),
               const Divider(),
               _header('Log blokir'),
               ListTile(

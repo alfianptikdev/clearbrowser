@@ -39,7 +39,7 @@ class TabManager {
 
   static const int maxTabs = 10;
 
-  final String homeUrl;
+  String homeUrl;
   final List<BrowserTab> tabs = [];
   int _nextId = 1;
   late BrowserTab _active;

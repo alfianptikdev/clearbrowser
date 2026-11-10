@@ -11,10 +11,14 @@ import '../core/logger.dart';
 /// menerapkannya ke guard dan skrip kosmetik.
 class SettingsStore extends ChangeNotifier {
   bool _adblockEnabled = true;
+  String _homeUrl = kHomeUrl;
   final Map<String, bool> _siteOverrides = {};
   final Set<String> _userSites = {};
 
   bool get adblockEnabled => _adblockEnabled;
+
+  /// Halaman awal (tab pertama, tab baru, tombol beranda).
+  String get homeUrl => _homeUrl;
   Map<String, bool> get siteOverrides => Map.unmodifiable(_siteOverrides);
   Set<String> get userSites => Set.unmodifiable(_userSites);
 
@@ -22,6 +26,8 @@ class SettingsStore extends ChangeNotifier {
     try {
       final prefs = await SharedPreferences.getInstance();
       _adblockEnabled = prefs.getBool(StorageKeys.adblockEnabled) ?? true;
+      final home = prefs.getString(StorageKeys.homeUrl);
+      if (home != null && home.isNotEmpty) _homeUrl = home;
       final raw = prefs.getString(StorageKeys.siteOverrides);
       if (raw != null) {
         final map = jsonDecode(raw);
@@ -48,6 +54,17 @@ class SettingsStore extends ChangeNotifier {
     _adblockEnabled = value;
     notifyListeners();
     await _guard((p) => p.setBool(StorageKeys.adblockEnabled, value));
+  }
+
+  /// Simpan halaman awal. [url] kosong = kembali ke default.
+  Future<void> setHomeUrl(String url) async {
+    _homeUrl = url.isEmpty ? kHomeUrl : url;
+    notifyListeners();
+    await _guard(
+      (p) => url.isEmpty
+          ? p.remove(StorageKeys.homeUrl)
+          : p.setString(StorageKeys.homeUrl, url),
+    );
   }
 
   Future<void> setSiteEnabled(String domain, bool value) async {
